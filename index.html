@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>篤行十村｜穿越時光的智慧眷村導覽系統</title>
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+    
+    <style>
+        :root {
+            --primary: #8B263E;     /* 眷村大門紅 */
+            --secondary: #2C3E50;   /* 深軍藍 */
+            --accent: #E67E22;      /* 懷舊橘 */
+            --bg-light: #FDFBF7;    /* 復古紙張白 */
+            --success: #27AE60;     /* 郵政綠 */
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: "PingFang TC", "Microsoft JhengHei", sans-serif; }
+        body, html { height: 100%; width: 100%; overflow: hidden; background: #eee; }
+
+        .app-container { display: flex; height: 100%; width: 100%; position: relative; }
+
+        /* 左側多功能高級控制台 */
+        .sidebar {
+            width: 400px;
+            height: 100%;
+            background: var(--bg-light);
+            box-shadow: 4px 0 15px rgba(0,0,0,0.15);
+            z-index: 1010;
+            display: flex;
+            flex-direction: column;
+            transition: transform 0.3s ease;
+            flex-shrink: 0;
+        }
+
+        /* 系統 Header */
+        .sidebar-header {
+            background: linear-gradient(135deg, var(--primary), #A5384F);
+            color: #FFFDEB;
+            padding: 20px;
+            text-align: center;
+        }
+        .sidebar-header h1 { font-size: 1.4rem; font-weight: 600; letter-spacing: 1px; }
+        .sidebar-header p { font-size: 0.8rem; color: #E0C39A; margin-top: 4px; }
+
+        /* 核心分頁籤 */
+        .nav-tabs { display: flex; background: var(--secondary); }
+        .tab-btn {
+            flex: 1; padding: 12px 5px; background: none; border: none;
+            color: #BDC3C7; font-size: 0.85rem; font-weight: bold;
+            cursor: pointer; text-align: center; display: flex;
+            flex-direction: column; align-items: center; gap: 4px; transition: all 0.2s;
+        }
+        .tab-btn i { font-size: 1.1rem; }
+        .tab-btn.active { background: var(--bg-light); color: var(--primary); }
+
+        /* 控制台內容滾動區 */
+        .sidebar-content { flex: 1; overflow-y: auto; padding: 15px; }
+
+        /* 推薦路線切換區 */
+        .route-tour-box {
+            background: white; border: 1px solid #E5DEC9; padding: 12px;
+            border-radius: 8px; margin-bottom: 15px; box-shadow: 0 2px 5px rgba(0,0,0,0.02);
+        }
+        .route-tour-title { font-size: 0.9rem; font-weight: bold; color: var(--secondary); margin-bottom: 8px; }
+        .route-badges { display: flex; gap: 6px; }
+        .route-badge {
+            flex: 1; padding: 6px 4px; background: #EEEDE8; border-radius: 4px;
+            font-size: 0.75rem; text-align: center; cursor: pointer; font-weight: bold; color: #555;
+        }
+        .route-badge.active { background: var(--primary); color: white; }
+
+        /* 景點與任務卡片樣式 */
+        .spot-card {
+            background: white; border-radius: 8px; padding: 14px; margin-bottom: 12px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.05); border-left: 5px solid #ccc;
+            cursor: pointer; position: relative;
+        }
+        .spot-card.active-spot { border-left-color: var(--primary); background: #FFF9F9; }
+        .spot-card h3 { font-size: 1rem; color: #333; display: flex; justify-content: space-between; align-items: center; }
+        .spot-card h3 span.order-num { background: #E67E22; color: white; border-radius: 50%; width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center; font-size: 0.75rem; margin-right: 5px; }
+        .spot-card p { font-size: 0.85rem; color: #666; margin-top: 6px; line-height: 1.4; }
+        
+        /* 互動按鈕群組 */
+        .card-actions { display: flex; gap: 8px; margin-top: 10px; border-top: 1px dashed #eee; padding-top: 10px; flex-wrap: wrap; }
+        .action-btn {
+            flex: 1; min-width: 70px; padding: 6px; font-size: 0.75rem; border: 1px solid #ddd;
+            background: white; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px;
+        }
+        .action-btn:hover { background: #f5f5f5; }
+        .btn-ar { background: #34495E !important; color: white; border: none; }
+        .btn-nav { background: var(--accent) !important; color: white; border: none; font-weight: bold; }
+
+        /* 集章與任務狀態 */
+        .stamp-status { font-size: 0.75rem; font-weight: bold; padding: 2px 6px; border-radius: 10px; background: #e0e0e0; color: #666; }
+        .stamp-status.unlocked { background: var(--success); color: white; }
+
+        /* AI虛擬導遊對話視窗 */
+        .ai-chat-box { background: #F0EDF5; border-radius: 8px; padding: 12px; margin-bottom: 15px; border: 1px solid #D6CEE3; }
+        .ai-title { font-size: 0.85rem; font-weight: bold; color: #6E5494; margin-bottom: 6px; display: flex; align-items: center; gap: 5px; }
+        .ai-content { font-size: 0.85rem; color: #444; background: white; padding: 8px; border-radius: 6px; min-height: 40px; margin-bottom: 8px; }
+        .ai-toggle-btn { padding: 5px 10px; background: white; border: 1px solid #6E5494; color: #6E5494; font-size: 0.75rem; border-radius: 15px; cursor: pointer; margin-right: 5px; margin-bottom: 5px; display: inline-block; }
+
+        /* 右側地圖區域 */
+        #map { 
+            flex: 1; 
+            height: 100%; 
+            width: 100%;
+            position: relative;
+            z-index: 1; 
+        }
+
+        /* 手機板收合按鈕 */
+        .toggle-sidebar-btn { display: none; }
+
+        /* 自訂 GPS 定位動畫 */
+        .user-gps-dot { background: #2980B9; border: 2.5px solid white; border-radius: 50%; box-shadow: 0 0 0 0 rgba(41, 128, 185, 0.7); animation: pulse 1.6s infinite; }
+        @keyframes pulse { 0% { transform: scale(0.9); box-shadow: 0 0 0 0 rgba(41, 128, 185, 0.7); } 70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(41, 128, 185, 0); } 100% { transform: scale(0.9); box-shadow: 0 0 0 0 rgba(41, 128, 185, 0); } }
+
+        /* 模擬 AR 擴增實境彈窗 */
+        .ar-modal {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85); z-index: 2000; align-items: center; justify-content: center;
+        }
+        .ar-window {
+            width: 90%; max-width: 500px; background: black; border-radius: 12px; overflow: hidden;
+            border: 3px solid #E67E22; position: relative;
+        }
+        .ar-camera-view { width: 100%; height: 300px; background: #222 url('https://images.unsplash.com/photo-1605647540924-852290f6b0d5?auto=format&fit=crop&w=600&q=80') center/cover; position: relative; }
+        .ar-overlay-sketch {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(139, 38, 62, 0.3); mix-blend-mode: overlay;
+            display: flex; align-items: center; justify-content: center; color: #FFF;
+            font-weight: bold; font-size: 1.2rem; text-shadow: 2px 2px 8px black; text-align: center; padding: 20px;
+            white-space: pre-line;
+        }
+        .ar-close { position: absolute; top: 10px; right: 10px; color: white; font-size: 2rem; cursor: pointer; z-index: 10; line-height: 1; }
+
+        /* 響應式 RWD 手機版配置 */
+        @media (max-width: 768px) {
+            .app-container { flex-direction: column-reverse; }
+            .sidebar { width: 100%; height: 50%; position: absolute; bottom: 0; left: 0; transition: transform 0.3s ease-in-out; }
+            .sidebar.collapsed { transform: translateY(calc(100% - 40px)); }
+            #map { width: 100%; position: absolute; top: 0; left: 0; height: calc(100% - 40px); }
+            .toggle-sidebar-btn { display: block; text-align: center; background: #e0e0e0; padding: 10px; font-size: 0.85rem; cursor: pointer; color: #333; font-weight: bold; border-top: 1px solid #ccc; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="app-container">
+        
+        <div class="sidebar collapsed" id="sidebar">
+            <div class="toggle-sidebar-btn" onclick="toggleMobileSidebar()">
+                <i class="fa-solid fa-bars"></i> 切換導覽選單
+            </div>
+
+            <div class="sidebar-header">
+                <h1>篤行十村 智慧導覽系統</h1>
+                <p>— 穿越時光的智慧眷村 —</p>
+            </div>
+
+            <div class="nav-tabs">
+                <button class="tab-btn active" id="tab-map" onclick="switchTab('map')"><i class="fa-solid fa-map-marked-alt"></i>地圖導覽</button>
+                <button class="tab-btn" id="tab-stamp" onclick="switchTab('stamp')"><i class="fa-solid fa-stamp"></i>數位集章</button>
+                <button class="tab-btn" id="tab-sound" onclick="switchTab('sound')"><i class="fa-solid fa-volume-up"></i>懷舊聲音</button>
+            </div>
+
+            <div class="sidebar-content">
+                
+                <div class="ai-chat-box">
+                    <div class="ai-title"><i class="fa-solid fa-robot"></i> AI 虛擬導遊開講中</div>
+                    <div class="ai-content" id="ai-response">您好！我是您的AI導遊。點擊下方問題，或在園區內移動，我會隨時為您解說眷村歷史喔！</div>
+                    <div id="ai-questions">
+                        <span class="ai-toggle-btn" onclick="askAI('why')">❓ 為什麼叫篤行十村？</span>
+                        <span class="ai-toggle-btn" onclick="askAI('ar')">❓ 怎麼玩AR老街重現？</span>
+                    </div>
+                </div>
+
+                <div class="route-tour-box" id="route-selector-ui">
+                    <div class="route-tour-title"><i class="fa-solid fa-route"></i> 智慧主題路線推薦</div>
+                    <div class="route-badges">
+                        <span class="route-badge active" id="rb-all" onclick="selectRoute('all')">建議全區</span>
+                        <span class="route-badge" id="rb-fast" onclick="selectRoute('fast')">30分快速</span>
+                        <span class="route-badge" id="rb-deep" onclick="selectRoute('deep')">1小時深度</span>
+                        <span class="route-badge" id="rb-family" onclick="selectRoute('family')">親子互動</span>
+                    </div>
+                </div>
+
+                <div id="list-container"></div>
+
+            </div>
+        </div>
+
+        <div id="map"></div>
+
+    </div>
+
+    <div class="ar-modal" id="arModal">
+        <div class="ar-window">
+            <span class="ar-close" onclick="closeAR()">×</span>
+            <div class="ar-camera-view">
+                <div class="ar-overlay-sketch" id="arOverlayText">正在載入 3D 復古場景...</div>
+            </div>
+            <div style="color: white; padding: 15px; font-size: 0.85rem; text-align: center; background: #222;">
+                <i class="fa-solid fa-camera"></i> 手機鏡頭已對準實體歷史建物，AR擴增實境重現成功！
+            </div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        // 核心顯示範圍中心點
+        const map = L.map('map', {
+            center: [23.56340, 119.56060], 
+            zoom: 19,
+            maxZoom: 20,
+            minZoom: 16,
+            zoomControl: true
+        });
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        }).addTo(map);
+
+        // 🚀 【微調點位】2、3往左微調一點點，4往右移一些，拉近整體間距
+        const tourData = [
+            { 
+                id: 1, 
+                order: 1, 
+                name: "入口意象區", 
+                lat: 23.56372, 
+                lng: 119.56082, 
+                desc: "導覽首站。展現全台最古老眷村的全新面貌，提供智慧導覽QR Code登錄點。", 
+                audioText: "歡迎來到篤行十村入口意象區。這裡過去是軍官眷舍群的門戶，今天將帶您穿越時空。", 
+                soundFile: "軍號聲", isFast: true, isDeep: true, isFamily: true, 
+                quiz: "篤行十村是台灣最古老的眷村嗎？", ans: "是的，它的前身可追溯至日治時期的澎湖島要塞司令部官舍群。", 
+                unlocked: false, arScene: "重現早期眷村大門與軍用吉普車" 
+            },
+            { 
+                id: 2, 
+                order: 2, 
+                name: "張雨生故事館", 
+                lat: 23.56331, 
+                lng: 119.56050, // 2號：往左移一些（.56055 -> .56050）
+                desc: "張雨生故事館為紀念華語樂壇創作歌手張雨生而設立。館內展示其成長照片、音樂創作手稿、專輯及相關文物，介紹他從澎湖少年成為知名音樂人的歷程。", 
+                audioText: "您好，現在來到張雨生故事館。館內展示著雨生充滿天賦與創意的音樂人生，讓我們一同回味他的音樂與故事。", 
+                soundFile: "天天想你老歌襯底", isFast: true, isDeep: true, isFamily: false, 
+                quiz: "張雨生的哪一首經典老歌與澎湖大海有關？", ans: "演繹經典的《大海》！", 
+                unlocked: false, arScene: "重現少年張雨生在庭院彈吉他的虛擬光影" 
+            },
+            { 
+                id: 3, 
+                order: 3, 
+                name: "潘安邦紀念館", 
+                lat: 23.56306, 
+                lng: 119.56082, // 3號：往左移一些（.56088 -> .56082）
+                desc: "潘安邦紀念館為紀念以《外婆的澎湖灣》聞名的民歌歌手潘安邦而設立。館內展示其生平事蹟、演出照片及音樂作品，呈現其音樂成就及對推廣澎湖文化的重要貢獻。", 
+                audioText: "陽光、沙灘、海浪、仙人掌。這裡完整展示了潘安邦音樂成就及對推廣澎湖文化的重要貢獻。", 
+                soundFile: "外婆的澎湖灣海浪聲", isFast: true, isDeep: true, isFamily: true, 
+                quiz: "外婆的澎湖灣歌詞中提到了哪種仙人掌？", ans: "澎湖特有植物仙人掌與老船長！", 
+                unlocked: false, arScene: "AR動畫：外婆在老牆邊縫補衣服、舊式帆船在海面航行" 
+            },
+            { 
+                id: 4, 
+                order: 4, 
+                name: "老眷舍建築區", 
+                lat: 23.56306, 
+                lng: 119.56061, // 4號：往右移一些（.56055 -> .56061），縮短與3號的距離
+                desc: "採用澎湖特有咾咕石與日式木造結構混合興建的獨特軍官宿舍建築群，刻劃著深深的歷史歲月痕跡。", 
+                audioText: "走進老眷舍建築群，注意看牆壁上的珊瑚礁咾咕石。這是澎湖就地取材的傳統建材，冬暖夏涼。", 
+                soundFile: "老廣播電台聲音", isFast: false, isDeep: true, isFamily: false, 
+                quiz: "老眷舍牆體主要由什麼石頭砌成？", ans: "由澎湖特有的海底珊瑚礁化石「咾咕石」砌成！", 
+                unlocked: false, arScene: "老街原始風貌與軍人生活日常模擬" 
+            },
+            { 
+                id: 5, 
+                order: 5, 
+                name: "文創商店街", 
+                lat: 23.56348, 
+                lng: 119.56046, 
+                desc: "舊宿舍空間經過現代活化改建而成的文青商圈，融入了在地文創設計、懷舊童玩與澎湖特色點心。", 
+                audioText: "文創商店街將過去的生活空間改造成現代文青市集，結合了懷舊與現代創意，歡迎入內尋寶。", 
+                soundFile: "懷舊市集叫販聲", isFast: false, isDeep: true, isFamily: true, 
+                quiz: "文創街過去在眷村時期多半扮演什麼機能？", ans: "多為眷村福利社、醫務室或集會所機能。", 
+                unlocked: false, arScene: "懷舊柑仔店與五金行攤販市集重現" 
+            },
+            { 
+                id: 6, 
+                order: 6, 
+                name: "懷舊拍照區", 
+                lat: 23.56345, 
+                lng: 119.56086, 
+                desc: "復古紅磚牆、軍事精神口號牆與早期的反共愛國標語打卡最熱門景點。", 
+                audioText: "歡迎來到懷舊拍照區，準備好您的相機！這面文化牆充滿了濃濃的民國五十年代愛國色彩。", 
+                soundFile: "軍隊正步口令聲", isFast: true, isDeep: false, isFamily: true, 
+                quiz: "文化牆上最著名的四字軍事口號是什麼？", ans: "經典的「毋忘在莒」！", 
+                unlocked: false, arScene: "AR濾鏡：換上草綠色復古軍裝與愛國軍帽" 
+            }
+        ];
+
+        let activeTab = 'map';
+        let activeRoute = 'all';
+        let userLatLng = null;
+        let userMarker = null;
+        let activePolyline = null;
+        let selectedSpotId = null;
+
+        window.onload = () => {
+            initMarkers();
+            renderList();
+            startSmartGps();
+            
+            setTimeout(() => {
+                map.invalidateSize(); 
+                map.setView([23.56340, 119.56060], 19); 
+                drawRouteLine();
+            }, 300);
+        };
+
+        const markerGroup = L.layerGroup().addTo(map);
+        function initMarkers() {
+            markerGroup.clearLayers();
+            tourData.forEach(spot => {
+                if (activeRoute === 'fast' && !spot.isFast) return;
+                if (activeRoute === 'deep' && !spot.isDeep) return;
+                if (activeRoute === 'family' && !spot.isFamily) return;
+
+                const markerIcon = L.divIcon({
+                    html: `<div style="background:var(--primary); color:white; border-radius:50%; width:26px; height:26px; display:flex; align-items:center; justify-content:center; border:2px solid white; font-weight:bold; font-size:12px; box-shadow:0 2px 5px rgba(0,0,0,0.3);">${spot.order}</div>`,
+                    className: 'custom-num-marker',
+                    iconSize: [26, 26],
+                    iconAnchor: [13, 13]
+                });
+
+                L.marker([spot.lat, spot.lng], { icon: markerIcon }).addTo(markerGroup).on('click', () => handleSpotClick(spot.id));
+            });
+        }
+
+        function renderList() {
+            const container = document.getElementById('list-container');
+            container.innerHTML = "";
+
+            tourData.forEach(spot => {
+                if (activeRoute === 'fast' && !spot.isFast) return;
+                if (activeRoute === 'deep' && !spot.isDeep) return;
+                if (activeRoute === 'family' && !spot.isFamily) return;
+
+                const isSelected = selectedSpotId === spot.id ? 'active-spot' : '';
+                const card = document.createElement('div');
+                card.className = `spot-card ${isSelected}`;
+                card.id = `card-${spot.id}`;
+                card.onclick = () => handleSpotClick(spot.id);
+
+                if (activeTab === 'map') {
+                    card.innerHTML = `
+                        <h3><span><span class="order-num">${spot.order}</span>${spot.name}</span> <i class="fa-solid fa-map-pin" style="color:var(--primary);"></i></h3>
+                        <p>${spot.desc}</p>
+                        <div class="card-actions">
+                            <button class="action-btn" onclick="playSpeech('${spot.audioText}', event)"><i class="fa-solid fa-volume-high" style="color:var(--accent);"></i> AI語音</button>
+                            <button class="action-btn btn-ar" onclick="openAR('${spot.arScene}', event)"><i class="fa-solid fa-cubes"></i> AR體驗</button>
+                            <button class="action-btn btn-nav" onclick="triggerNavigation(${spot.id}, event)"><i class="fa-solid fa-location-arrow"></i> 導航</button>
+                        </div>
+                    `;
+                } else if (activeTab === 'stamp') {
+                    const badgeClass = spot.unlocked ? 'unlocked' : '';
+                    const badgeText = spot.unlocked ? '🎉 集章成功' : '🔒 待完成問答';
+                    card.innerHTML = `
+                        <h3><span><span class="order-num">${spot.order}</span>${spot.name}</span> <span class="stamp-status ${badgeClass}">${badgeText}</span></h3>
+                        <p><strong>問答任務：</strong>${spot.quiz}</p>
+                        ${!spot.unlocked ? `<button class="action-btn" style="margin-top:8px; width:100%; background:var(--secondary); color:white;" onclick="solveQuiz(${spot.id}, '${spot.ans}', event)"><i class="fa-solid fa-key"></i> 進行文化問答解鎖</button>` : `<p style="color:var(--success); font-size:0.8rem; margin-top:5px;"><i class="fa-solid fa-circle-check"></i> 答案解密：${spot.ans}</p>`}
+                    `;
+                } else if (activeTab === 'sound') {
+                    card.innerHTML = `
+                        <h3><span><span class="order-num">${spot.order}</span>${spot.name}</span> <i class="fa-solid fa-radio" style="color:#7f8c8d;"></i></h3>
+                        <p>本區環境聲音：<strong>【${spot.soundFile}】</strong></p>
+                        <button class="action-btn" style="margin-top:8px; width:100%;" onclick="simulateSound('${spot.soundFile}', event)"><i class="fa-solid fa-play"></i> 播放實地懷舊聲學音效</button>
+                    `;
+                }
+                container.appendChild(card);
+            });
+        }
+
+        function handleSpotClick(id) {
+            selectedSpotId = id;
+            const spot = tourData.find(s => s.id === id);
+            
+            document.querySelectorAll('.spot-card').forEach(c => c.classList.remove('active-spot'));
+            const selectedCard = document.getElementById(`card-${id}`);
+            if (selectedCard) selectedCard.classList.add('active-spot');
+
+            map.panTo([spot.lat, spot.lng]);
+            document.getElementById('ai-response').innerText = `【現在為您解說 - ${spot.name}】\n${spot.audioText}`;
+
+            if (selectedCard) selectedCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+
+        function switchTab(tabName) {
+            activeTab = tabName;
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.getElementById(`tab-${tabName}`).classList.add('active');
+
+            const routeUi = document.getElementById('route-selector-ui');
+            routeUi.style.display = (tabName === 'map') ? 'block' : 'none';
+
+            renderList();
+            map.invalidateSize();
+        }
+
+        function selectRoute(routeName) {
+            activeRoute = routeName;
+            document.querySelectorAll('.route-badge').forEach(b => b.classList.remove('active'));
+            document.getElementById(`rb-${routeName}`).classList.add('active');
+            
+            initMarkers();
+            renderList();
+            drawRouteLine();
+        }
+
+        function drawRouteLine() {
+            if (activePolyline) map.removeLayer(activePolyline);
+
+            const filteredPoints = tourData
+                .filter(s => activeRoute === 'all' || (activeRoute === 'fast' && s.isFast) || (activeRoute === 'deep' && s.isDeep) || (activeRoute === 'family' && s.isFamily))
+                .sort((a, b) => a.order - b.order)
+                .map(s => [s.lat, s.lng]);
+
+            if (filteredPoints.length > 1) {
+                activePolyline = L.polyline(filteredPoints, {
+                    color: 'var(--primary)',
+                    weight: 5,
+                    opacity: 0.8,
+                    dashArray: '8, 8'
+                }).addTo(map);
+            }
+        }
+
+        function playSpeech(text, e) {
+            if(e) e.stopPropagation();
+            window.speechSynthesis.cancel();
+            const utter = new SpeechSynthesisUtterance(text);
+            utter.lang = 'zh-TW';
+            utter.rate = 0.95;
+            window.speechSynthesis.speak(utter);
+        }
+
+        function solveQuiz(id, correctAns, e) {
+            e.stopPropagation();
+            const answer = prompt(`【智慧問答任務】\n請輸入在現場看到的答案（或輸入任何字測試）：\n\n提示答案：${correctAns}`);
+            if (answer !== null) {
+                const spot = tourData.find(s => s.id === id);
+                spot.unlocked = true;
+                alert("✨ 恭喜答對！成功獲得該景點的「電子印章」！");
+                renderList();
+            }
+        }
+
+        function openAR(sceneText, e) {
+            e.stopPropagation();
+            document.getElementById('arModal').style.display = 'flex';
+            document.getElementById('arOverlayText').innerText = `【AR 穿越時空濾鏡已開啟】\n\n正在實時疊加歷史圖像：\n${sceneText}`;
+        }
+        function closeAR() { document.getElementById('arModal').style.display = 'none'; }
+
+        function simulateSound(soundName, e) {
+            e.stopPropagation();
+            alert(`🔊 正在播放現場【${soundName}】環境音效...`);
+        }
+
+        function askAI(type) {
+            if(type === 'why') {
+                document.getElementById('ai-response').innerText = "【AI解答】篤行十村是全台灣歷史最悠久的古老眷村！前身是日治時期澎湖島要塞司令部的軍官宿舍群，戰後由國民政府接管改名為篤行十村。";
+            } else if(type === 'ar') {
+                document.getElementById('ai-response').innerText = "【AI解答】實地走訪到景點時，點擊列表上的「AR體驗」，系統相機就會自動在現場實景上，疊加出五十年前的眷村生活舊場景模擬喔！";
+            }
+        }
+
+        function startSmartGps() {
+            if (!navigator.geolocation) return;
+            navigator.geolocation.watchPosition(pos => {
+                const lat = pos.coords.latitude;
+                const lng = pos.coords.longitude;
+                userLatLng = L.latLng(lat, lng);
+
+                if (userMarker) { 
+                    userMarker.setLatLng(userLatLng); 
+                } else {
+                    userMarker = L.marker(userLatLng, {
+                        icon: L.divIcon({ className: 'user-gps-dot', iconSize: [16, 16], iconAnchor: [8, 8] })
+                    }).addTo(map);
+                }
+            }, err => console.log("GPS 權限未開啟，維持預設導覽中心點。"), { enableHighAccuracy: true });
+        }
+
+        function triggerNavigation(id, e) {
+            e.stopPropagation();
+            const spot = tourData.find(s => s.id === id);
+            const url = `https://www.google.com/maps/dir/?api=1&destination=${spot.lat},${spot.lng}&travelmode=walking`;
+            window.open(url, '_blank');
+        }
+
+        function toggleMobileSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            sidebar.classList.toggle('collapsed');
+            setTimeout(() => { map.invalidateSize(); }, 320);
+        }
+    </script>
+</body>
+</html>
